@@ -5,6 +5,7 @@ import org.example.util.Currency;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,27 +26,40 @@ public class PriceController {
     }
 
     @GetMapping(value = "/{currency}")
-    public String getPrices(@PathVariable(name = "currency") String currency) {
+    public ResponseEntity<?> getPrices(@PathVariable(name = "currency") String currency) {
         LOGGER.info("called API /{currency} with an argument {}", currency);
-        try {
-            Currency.valueOf(currency.toUpperCase()); // Convert to uppercase to match enum values
-        } catch (IllegalArgumentException e) {
+        Currency cryptoCurrency = getCurrency(currency);
+        if (cryptoCurrency == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid currency: " + currency);
         }
-
-        return priceService.getPrices(currency) + "\n";
+        try {
+            return ResponseEntity.ok(priceService.getPrices(currency));
+        } catch (Exception e) {
+            LOGGER.error("Error fetching prices for currency {}", currency, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching prices");
+        }
     }
 
     @GetMapping("/prices")
-    public String getStat() {
+    public ResponseEntity<?> getAllPrices() {
         LOGGER.info("called API /prices");
-        return priceService.getPrices().toString() + "\n";
+        try {
+            return ResponseEntity.ok(priceService.getPrices());
+        } catch (Exception e) {
+            LOGGER.error("Error fetching all prices", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching all prices");
+        }
     }
 
     @GetMapping("/normalized")
-    public String getNormalizedForAll() {
+    public ResponseEntity<?> getNormalizedForAll() {
         LOGGER.info("called API /normalized");
-        return priceService.getNormalized().toString() + "\n";
+        try {
+            return ResponseEntity.ok(priceService.getNormalized());
+        } catch (Exception e) {
+            LOGGER.error("Error fetching normalized data for all currencies", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching normalized data");
+        }
     }
 
     /**
@@ -54,8 +68,29 @@ public class PriceController {
      * format: YYYY-MM-DD
      */
     @GetMapping("/normalized/{day}")
-    public String getNormalizedForDay(@PathVariable(name = "day") LocalDate day) {
+    public ResponseEntity<?> getNormalizedForDay(@PathVariable(name = "day") LocalDate day) {
         LOGGER.info("called API /normalized/{day} with an argument {}", day);
-        return priceService.getNormalizedForDay(day) + "\n";
+        try {
+            String normalizedCurrency = priceService.getNormalizedForDay(day);
+            if (normalizedCurrency == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No data available for the given day");
+            }
+            return ResponseEntity.ok(normalizedCurrency);
+        } catch (Exception e) {
+            LOGGER.error("Error fetching normalized data for day {}", day, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error fetching normalized data for day " + day);
+        }
+    }
+
+    /**
+     * Utility method to validate and retrieve the Currency enum.
+     */
+    private Currency getCurrency(String currency) {
+        try {
+            return Currency.valueOf(currency.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("Invalid currency: {}", currency);
+            return null;
+        }
     }
 }
